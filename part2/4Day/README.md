@@ -429,6 +429,8 @@ You say good die→0.0000032（不自然）
 
 ## 実装
 
+https://github.com/Tomo-Horiuchi/rabbit/blob/master/part2/4Day/lecture_chap1_exercise_public.ipynb
+
 # Trancefomer
 
 RNN を使用していない（必要なのは Attntion だけ）
@@ -501,6 +503,133 @@ RNN ではないので単語列の語順を情報を追加するため
 
 ## 実装
 
+https://github.com/Tomo-Horiuchi/rabbit/blob/master/part2/4Day/lecture_chap2_exercise_public.ipynb
+
+## 考察
+
+Trancefomer と Seq2seq 比べるとはるかに Trancefomer のほうが学習速度が高速で精度もよいことが分かった
+
+# 物体認識
+
+入力データは画像
+広義の物体認識タスクは４つに分類される
+
+| 名称         | 出力                                   | 位置     | インスタンスの区別 |
+| ------------ | -------------------------------------- | -------- | ------------------ |
+| 分類         | 画像に対し単一または複数のクラスラベル | 興味なし | 興味なし           |
+| 物体検知     | Bounding Box                           | 興味あり | 興味なし           |
+| 意味領域分割 | 各ピクセルに対し単一のクラスラベル     | 興味あり | 興味なし           |
+| 個体領域分割 | 各ピクセルに対し単一のクラスラベル     | 興味あり | 興味あり           |
+
+分類 → 物体検知 → 意味領域分割 → 個体領域分割の順で難しくなる
+
 # 物体検知
 
-# セグメンテーション
+どこに何がどんなコンフィデンスであるかを示すもの（Bounding Box）を予測する
+
+## データセット
+
+| 名称      | クラス | Train+Val | Box 数/画像 |
+| --------- | ------ | --------- | ----------- |
+| VOC12     | 20     | 11,540    | 2.4         |
+| ILSVRC17  | 200    | 476,668   | 1.1         |
+| MS COCO18 | 80     | 123,287   | 7.3         |
+| OICOD18   | 500    | 1,743,042 | 7.0         |
+
+Box/画像が小さいとアイコン的な映り、日常感とはかけ離れやすい
+Box/画像が大きいと部分的な重なり等も見られる、日常生活のコンテキストに近い
+
+## 評価指標
+
+クラス分類との違いはコンフィデンスのしきい値よって BBox の数が変化する
+
+### IoU
+
+物体検出においてはクラスラベルだけでなく, 物体位置の予測精度も評価したい
+
+![image.png](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/457374/ef457a8d-7222-98f4-c24d-8787fa66636c.png)
+
+Area of overlap = $TP$
+Area of Union = $TP + FP + FN$
+
+### Precision/Recal
+
+![image.png](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/457374/73efca6a-d43c-21e9-06f8-62951b9a3172.png)
+
+コンフィデンスと IoU でそれぞれの閾値を設定する
+conf.の閾値：0.5
+IoU の閾値：0.5
+
+| conf. | pred. | IoU |
+| ----- | ----- | --- | ---- |
+| P1    | 0.92  | 人  | 0.88 |
+| P2    | 0.85  | 車  | 0.46 |
+| P3    | 0.81  | 車  | 0.92 |
+| P4    | 0.70  | 犬  | 0.83 |
+| P5    | 0.69  | 人  | 0.76 |
+| P6    | 0.54  | 車  | 0.20 |
+
+P1:IoU > 0.5 より TP（人を検出）
+P2:IoU < 0.5 より FP
+P3:IoU > 0.5 より TP（車を検出）
+P4:IoU > 0.5 より TP（犬を検出）
+P5:IoU > 0.5 であるが既に検出済みなので FP
+P6:IoU < 0.5 より FP
+
+Precision：$\frac{3}{3+3}＝ 0.50$
+
+Recall：$\frac{3}{0+3}＝ 1.00$
+
+### Average Precision
+
+conf.の閾値：$ \beta $としたとき
+Precision：$R( \beta )$
+Recall：$P( \beta )$
+Precision-Recall curve:$P=f( R )$
+
+Average Precision(PR 曲線の下側面積):
+
+$$
+AP =　\int_0^1 P(R)dR
+$$
+
+### FPS：Flames per Second
+
+物体検知応用上の要請から, 検出精度に加え検出速度も問題となる
+
+![image.png](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/457374/0c8a509b-5203-4128-e7e3-8d9f22278879.png)
+
+## セグメンテーション
+
+### 問題点
+
+畳み込みやプーリングによりが画像の解像度がおちてしまう
+入力サイズと同じサイズで各ピクセルに対し単一のクラスラベルをつけなければならない
+元のサイズに戻さなければならない →Up-sampling の壁
+解決策として以下の二つがある
+
+-   Deconvolution
+-   Transposed
+
+### Deconvolution/Transposed
+
+![image.png](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/457374/02147094-1c85-a276-164b-d5c57b5c390c.png)
+
+上図は kernel size = 3, padding = 1, stride = 1 の Deconv.により 3×3 の特徴マップが 5×5 に Up-sampling される様子
+
+-   通常の Conv.層と同様, カーネルサイズ・パディング・ストライドを指定
+-   特徴マップの pixel 間隔を stride だけ空ける
+-   特徴マップのまわりに(kernel size - 1) - padding だけ余白を作る
+-   畳み込み演算を行う
+
+逆畳み込みと呼ばれることも多いが畳み込みの逆演算ではないことに注意 → 当然, pooling で失われた情報が復元されるわけではない
+
+### Dilated 　 Convolution
+
+pooling を使用せず Convolution の段階で受容野を広げる工夫
+
+![image.png](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/457374/f5e8ad4e-bbd6-93d0-6a8b-83dda3854eb6.png)
+
+3×3 の間に隙間を与える 5×5 にし受容野を広げる（rate=2）
+計算量は 3×3 と同等
+最終的には 15×15 に受容野を広げられる
